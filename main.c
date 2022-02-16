@@ -11,14 +11,16 @@ int	get_params(int argc, char **argv, t_params *prm)
 	prm->time_sleeping = ft_atoi(argv[4]);
 	if (argc == 6)
 		prm->must_eat_times = ft_atoi(argv[5]);
+	else
+		prm->must_eat_times = -1;
 	if (!prm->philos || !prm->time_to_die
 		|| !prm->time_eating || !prm->time_sleeping)
 	{
 		write(1, "Invalid arguments\n", 18);
 		return (-1);
 	}
+	prm->must_die = 0;
 	pthread_mutex_init(&prm->writing, 0);
-	printf("%d %ld %ld %ld\n", prm->philos, prm->time_to_die, prm->time_eating, prm->time_sleeping);
 	return (0);
 }
 
@@ -30,7 +32,6 @@ int	init_philos(t_philo *philos, t_params *params, t_fork *fork)
 	while (++i < params->philos)
 	{
 		fork[i].count = i;
-		fork[i].free = TRUE;
 		pthread_mutex_init(&fork[i].mutex, 0);
 	}
 	i = -1;
@@ -50,26 +51,23 @@ int	init_philos(t_philo *philos, t_params *params, t_fork *fork)
 			philos[i].right = &fork[i];
 		}
 		philos[i].prm = params;
+		pthread_mutex_init(&philos[i].rewrite_lstate, 0);
 	}
 	return (i);
 }
 
-int	write_stdout(t_philo *philo, int flag)
+int	write_stdout(char *str, t_philo *philo, int flag)
 {
 	struct timeval	now;
+	long			tmp;
 
-	pthread_mutex_lock(&philo->prm->writing);
 	gettimeofday(&now, 0);
-	if (flag == EATING)
-		printf("%d %d philo is eating\n", philo->last_ate.tv_usec / 1000, philo->num);
-	else if (flag == DYING)
-		printf("%d %d philo has died\n", now.tv_usec / 1000, philo->num);
-	else if (flag == FORK_1 || flag == FORK_2)
-		printf("%d %d philo has taken fork %d\n", now.tv_usec / 1000, philo->num, flag);
-	else if (flag == SLEEPING)
-		printf("%d %d philo is sleeping\n", now.tv_usec / 1000, philo->num);
-	else if (flag == THINKING)
-		printf("%d %d philo is thinking\n", now.tv_usec / 1000, philo->num);
+	pthread_mutex_lock(&philo->prm->writing);
+	tmp = ((now.tv_usec - philo->prm->prog_start.tv_usec) / 1000) + ((now.tv_sec - philo->prm->prog_start.tv_sec) * 1000);
+	if (flag == 1)
+		printf("%ld %d has taken forks\n%ld %d is eating\n", tmp, philo->num, tmp, philo->num);
+	else
+		printf("%ld %d %s\n", tmp, philo->num, str);
 	pthread_mutex_unlock(&philo->prm->writing);
 	return (0);
 }
@@ -78,31 +76,44 @@ int	is_starved(t_philo *philo)
 {
 	struct timeval	now;
 
+	pthread_mutex_lock(&philo->rewrite_lstate);
 	gettimeofday(&now, 0);
-	//printf("%d %d %ld %d\n", now.tv_usec, philo->last_ate.tv_usec, philo->prm->time_to_die, (now.tv_usec - philo->last_ate.tv_usec) / 1000);
-	if ((((now.tv_usec - philo->last_ate.tv_usec) / 1000) >= philo->prm->time_to_die))
+	if (((now.tv_sec - philo->last_ate.tv_sec) * 1000) + ((now.tv_usec - philo->last_ate.tv_usec) / 1000) > philo->prm->time_to_die)
+	{
+		philo->prm->must_die = 1;
+		//printf("%ld\n", ((now.tv_sec - philo->last_ate.tv_sec) * 1000) + ((now.tv_usec - philo->last_ate.tv_usec) / 1000));
+		pthread_mutex_unlock(&philo->rewrite_lstate);
 		return(1);
+	}
 	else
+	{
+		pthread_mutex_unlock(&philo->rewrite_lstate);
 		return(0);
+	}
 }
 
-int	take_forks(t_philo *philo)
+void	my_sleep(long ms)
 {
-	pthread_mutex_lock(&philo->right->mutex);
-	write_stdout(philo, FORK_1);
-	if (is_starved(philo))
-		return (1);
-	pthread_mutex_lock(&philo->left->mutex);
-	write_stdout(philo, FORK_2);
-	return (0);
+	struct timeval	now;
+	struct timeval	tmp;
+
+	gettimeofday(&now, 0);
+	gettimeofday(&tmp, 0);
+	while (((tmp.tv_sec - now.tv_sec) * 1000) + ((tmp.tv_usec - now.tv_usec) / 1000) < ms)
+	{
+		usleep(10);
+		gettimeofday(&tmp, 0);
+	}
 }
 
 int	eat(t_philo *philo)
 {
+	my_sleep(philo->prm->time_eating);
+	pthread_mutex_lock(&philo->rewrite_lstate);
 	gettimeofday(&philo->last_ate, 0);
-	write_stdout(philo, EATING);
-	usleep(philo->prm->time_eating * 1000);
-	gettimeofday(&philo->last_ate, 0);
+	if (philo->prm->must_eat_times != -1 && philo->has_eaten < philo->prm->must_eat_times)
+		philo->has_eaten++;
+	pthread_mutex_unlock(&philo->rewrite_lstate);
 	pthread_mutex_unlock(&philo->right->mutex);
 	pthread_mutex_unlock(&philo->left->mutex);
 	return (0);
@@ -110,52 +121,91 @@ int	eat(t_philo *philo)
 
 void	*live(void *philos)
 {
-	t_philo	*philo;
+	t_philo		*philo;
 	t_params	*prm;
 
 	philo = philos;
 	prm = philo->prm;
-	while (1)
+	gettimeofday(&philo->last_ate, 0);
+	pthread_mutex_lock(&philo->rewrite_lstate);
+	if (philo->num % 2 == 0)
+		usleep(100);
+	pthread_mutex_unlock(&philo->rewrite_lstate);
+	while (prm->must_die != 1)
 	{
-		take_forks(philo);
-		if (is_starved(philo))
-			break ;
-		eat(philo);
-		write_stdout(philo, SLEEPING);
-		usleep(prm->time_sleeping * 1000);
-		if (is_starved(philo))
-			break ;
-		write_stdout(philo, THINKING);
+		pthread_mutex_lock(&philo->right->mutex);
+		pthread_mutex_lock(&philo->left->mutex);
+		write_stdout("", philo, 1);
+		if (eat(philo) == 1)
+			return (NULL);
+		write_stdout("is sleeping", philo, 0);
+		my_sleep(prm->time_sleeping);
+		write_stdout("is thinking", philo, 0);
 	}
-	return NULL;
+	return (NULL);
 }
 
-void	gameover(t_philo *philo, t_params *params, int philo_num)
+int	max_eat_times(t_philo *philos, t_params *params)
 {
 	int	i;
 
-	i = 0;
+	i = -1;
+	while (++i < params->philos)
+	{
+		pthread_mutex_lock(&philos[i].rewrite_lstate);
+		if (philos[i].has_eaten < params->must_eat_times)
+		{
+			pthread_mutex_unlock(&philos[i].rewrite_lstate);
+			return (0);
+		}
+		pthread_mutex_unlock(&philos[i].rewrite_lstate);
+	}
+	params->must_die = 1;
+	return (1);
 }
 
 int	start_simulation(t_philo *philos, t_params *params)
 {
 	int	i;
-	int	philo_num;
 
 	i = -1;
-	if (params->philos == 1)
-		write_stdout(philos, DYING);
+	gettimeofday(&params->prog_start, 0);
 	while (++i < params->philos)
 	{
-		gettimeofday(&philos[i].last_ate, 0);
 		pthread_create(&philos[i].ph_th, 0, live, &(philos[i]));
-		philo_num = philos[i].num;
-		break ;
-	//	printf("philo %d, last_ate %d, has_eaten %d, left fork %d, right fork %d\n",
-	//		philos[i].num, philos[i].last_ate.tv_usec / 1000, philos[i].has_eaten, philos[i].left->count, philos[i].right->count);
+		// pthread_detach(philos[i].ph_th);
 	}
-	gameover(philos, params, philo_num);
+	while (1)
+	{
+		if (i >= params->philos)
+		{
+			i = 0;
+			if (params->must_eat_times != -1 && max_eat_times(philos, params) == 1)
+				return (0);
+		}
+		if (is_starved(&philos[i]) == 1)
+		{
+			write_stdout("has died", &philos[i], 0);
+			return(0);
+		}
+		i++;
+	}
 	return (0);
+}
+
+void	gameover(t_philo *philo, t_fork *forks, t_params *params)
+{
+	int	i;
+
+	i = -1;
+	while (++i < params->philos)
+		pthread_join(philo[i].ph_th, 0);
+	while (++i < params->philos)
+	{
+		pthread_mutex_destroy(&forks[i].mutex);
+		pthread_mutex_destroy(&philo[i].rewrite_lstate);
+	}
+	pthread_mutex_destroy(&params->writing);
 }
 
 int	main(int argc, char **argv)
@@ -164,7 +214,7 @@ int	main(int argc, char **argv)
 	t_philo		philos[200];
 	t_fork		fork[200];
 
-	if (argc < 5)
+	if (argc != 5 && argc != 6)
 		return (1);
 	if (get_params(argc, argv, &params) < 0)
 		return (1);
@@ -172,13 +222,6 @@ int	main(int argc, char **argv)
 		return (1);
 	if (start_simulation((t_philo *) philos, &params) < 0)
 		return (1);
-	int i = -1;
-	while (++i < params.philos)
-	{
-		pthread_mutex_destroy(&fork[i].mutex);
-	}
+	gameover((t_philo *) philos, (t_fork *) fork, &params);
 	return (0);
 }
-
-//когда умирают, философы должны выйти из вечного цикла.
-//Джойнить все треды, а только потом мьютексы дестроить.

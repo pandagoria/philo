@@ -5,7 +5,7 @@ SRCS = main.c \
 
 OBJ = $(SRCS:.c=.o)
 
-FLAGS = -Wall -Wextra -Werror -fsanitize=address
+FLAGS = -Wall -Wextra -Werror -pthread
 
 all: $(NAME)
 
