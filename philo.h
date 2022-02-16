@@ -16,6 +16,7 @@ typedef struct s_params
 	int		must_eat_times;
 	int		must_die;
 	pthread_mutex_t	writing;
+	pthread_mutex_t	died;
 	struct timeval	prog_start;
 }	t_params;
 

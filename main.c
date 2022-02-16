@@ -20,6 +20,7 @@ int	get_params(int argc, char **argv, t_params *prm)
 		return (-1);
 	}
 	prm->must_die = 0;
+	pthread_mutex_init(&prm->died, 0);
 	pthread_mutex_init(&prm->writing, 0);
 	return (0);
 }
@@ -80,8 +81,7 @@ int	is_starved(t_philo *philo)
 	gettimeofday(&now, 0);
 	if (((now.tv_sec - philo->last_ate.tv_sec) * 1000) + ((now.tv_usec - philo->last_ate.tv_usec) / 1000) > philo->prm->time_to_die)
 	{
-		philo->prm->must_die = 1;
-		//printf("%ld\n", ((now.tv_sec - philo->last_ate.tv_sec) * 1000) + ((now.tv_usec - philo->last_ate.tv_usec) / 1000));
+		// printf("%ld\n", ((now.tv_sec - philo->last_ate.tv_sec) * 1000) + ((now.tv_usec - philo->last_ate.tv_usec) / 1000));
 		pthread_mutex_unlock(&philo->rewrite_lstate);
 		return(1);
 	}
@@ -111,7 +111,7 @@ int	eat(t_philo *philo)
 	my_sleep(philo->prm->time_eating);
 	pthread_mutex_lock(&philo->rewrite_lstate);
 	gettimeofday(&philo->last_ate, 0);
-	if (philo->prm->must_eat_times != -1 && philo->has_eaten < philo->prm->must_eat_times)
+	if (philo->prm->must_eat_times != -1)
 		philo->has_eaten++;
 	pthread_mutex_unlock(&philo->rewrite_lstate);
 	pthread_mutex_unlock(&philo->right->mutex);
@@ -131,16 +131,22 @@ void	*live(void *philos)
 	if (philo->num % 2 == 0)
 		usleep(100);
 	pthread_mutex_unlock(&philo->rewrite_lstate);
-	while (prm->must_die != 1)
+	while (1)
 	{
 		pthread_mutex_lock(&philo->right->mutex);
 		pthread_mutex_lock(&philo->left->mutex);
 		write_stdout("", philo, 1);
-		if (eat(philo) == 1)
-			return (NULL);
+		eat(philo);
 		write_stdout("is sleeping", philo, 0);
 		my_sleep(prm->time_sleeping);
 		write_stdout("is thinking", philo, 0);
+		pthread_mutex_lock(&prm->died);
+		if (prm->must_die == 1)
+		{
+			pthread_mutex_unlock(&prm->died);
+			return (0);
+		}
+		pthread_mutex_unlock(&prm->died);
 	}
 	return (NULL);
 }
@@ -160,7 +166,6 @@ int	max_eat_times(t_philo *philos, t_params *params)
 		}
 		pthread_mutex_unlock(&philos[i].rewrite_lstate);
 	}
-	params->must_die = 1;
 	return (1);
 }
 
@@ -173,7 +178,7 @@ int	start_simulation(t_philo *philos, t_params *params)
 	while (++i < params->philos)
 	{
 		pthread_create(&philos[i].ph_th, 0, live, &(philos[i]));
-		// pthread_detach(philos[i].ph_th);
+		pthread_detach(philos[i].ph_th);
 	}
 	while (1)
 	{
@@ -181,10 +186,18 @@ int	start_simulation(t_philo *philos, t_params *params)
 		{
 			i = 0;
 			if (params->must_eat_times != -1 && max_eat_times(philos, params) == 1)
+			{
+				pthread_mutex_lock(&params->died);
+				params->must_die = 1;
+				pthread_mutex_unlock(&params->died);
 				return (0);
+			}
 		}
 		if (is_starved(&philos[i]) == 1)
 		{
+			pthread_mutex_lock(&params->died);
+			params->must_die = 1;
+			pthread_mutex_unlock(&params->died);
 			write_stdout("has died", &philos[i], 0);
 			return(0);
 		}
@@ -197,9 +210,12 @@ void	gameover(t_philo *philo, t_fork *forks, t_params *params)
 {
 	int	i;
 
+	// i = -1;
+	// while (++i < params->philos)
+	// {
+	// 	pthread_join(philo[i].ph_th, 0);
+	// }
 	i = -1;
-	while (++i < params->philos)
-		pthread_join(philo[i].ph_th, 0);
 	while (++i < params->philos)
 	{
 		pthread_mutex_destroy(&forks[i].mutex);
@@ -222,6 +238,7 @@ int	main(int argc, char **argv)
 		return (1);
 	if (start_simulation((t_philo *) philos, &params) < 0)
 		return (1);
-	gameover((t_philo *) philos, (t_fork *) fork, &params);
+	usleep((params.time_eating + params.time_sleeping) * 2000);
+	gameover((t_philo *) philos, fork, &params);
 	return (0);
 }
