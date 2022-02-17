@@ -58,7 +58,7 @@ static int	check_valid_params(t_params *prm)
 
 static int	not_digits(const char *str)
 {
-	int i;
+	int	i;
 
 	i = -1;
 	while (str[++i])
