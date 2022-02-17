@@ -1,7 +1,7 @@
 
 NAME = philo
 
-SRCS = main.c \
+SRCS = main.c utils.c init.c monitor_philos.c \
 
 OBJ = $(SRCS:.c=.o)
 
@@ -13,17 +13,14 @@ all: $(NAME)
 	$(CC)  $(FLAGS) -c $< -o $@
 
 $(NAME): $(OBJ)
-	make -C ./libft/
-	$(CC) $(OBJ) libft/libft.a $(FLAGS) -o $(NAME)
+	$(CC) $(OBJ) $(FLAGS) -o $(NAME)
 
 re: fclean all
 
 clean:
-	make clean -C ./libft/
 	rm -rf *.o
 
 fclean: clean
 	rm -rf $(NAME)
-	make fclean -C  ./libft/
 
 .PHONY: clean fclean re all
