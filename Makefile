@@ -24,3 +24,5 @@ fclean: clean
 	rm -rf $(NAME)
 
 .PHONY: clean fclean re all
+
+# проверять все аргументы на отрицательные значения, и на символы

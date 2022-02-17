@@ -53,7 +53,7 @@ void	my_sleep(long ms)
 	while (((tmp.tv_sec - now.tv_sec) * 1000)
 		+ ((tmp.tv_usec - now.tv_usec) / 1000) < ms)
 	{
-		usleep(300);
+		usleep(10);
 		gettimeofday(&tmp, 0);
 	}
 }
@@ -72,6 +72,7 @@ int	write_stdout(char *str, t_philo *philo, int flag)
 			tmp, philo->num, tmp, philo->num);
 	else
 		printf("%ld %d %s\n", tmp, philo->num, str);
-	pthread_mutex_unlock(&philo->prm->writing);
+	if (flag != 2)
+		pthread_mutex_unlock(&philo->prm->writing);
 	return (0);
 }

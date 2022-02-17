@@ -56,8 +56,26 @@ static int	check_valid_params(t_params *prm)
 		&& prm->time_sleeping >= 60 && prm->time_to_die >= 60);
 }
 
+static int	not_digits(const char *str)
+{
+	int i;
+
+	i = -1;
+	while (str[++i])
+	{
+		if (str[i] < '0' || str[i] > '9')
+			return (1);
+	}
+	return (0);
+}
+
 int	init_params(int argc, char **argv, t_params *prm)
 {
+	if (not_digits(argv[1]) || not_digits(argv[2])
+		|| not_digits(argv[3]) || not_digits(argv[4]))
+		return (-1);
+	if (argc == 6 && not_digits(argv[5]))
+		return (-1);
 	prm->philos = ft_atoi(argv[1]);
 	prm->time_to_die = ft_atoi(argv[2]);
 	prm->time_eating = ft_atoi(argv[3]);

@@ -30,7 +30,7 @@ static void	*live(void *philo)
 	gettimeofday(&((t_philo *)philo)->last_ate, 0);
 	pthread_mutex_lock(&((t_philo *)philo)->rewrite_lstate);
 	if (((t_philo *)philo)->num % 2 == 0)
-		usleep(100);
+		usleep(2500);
 	pthread_mutex_unlock(&((t_philo *)philo)->rewrite_lstate);
 	while (1)
 	{

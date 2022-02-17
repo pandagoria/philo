@@ -72,7 +72,7 @@ void	monitor_philos_state(t_philo *philos, t_params *params)
 			pthread_mutex_lock(&params->died);
 			params->must_die = 1;
 			pthread_mutex_unlock(&params->died);
-			write_stdout("has died", &philos[i], 0);
+			write_stdout("has died", &philos[i], 2);
 			return ;
 		}
 	}
