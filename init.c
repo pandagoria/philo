@@ -65,6 +65,7 @@ static int	not_digits(const char *str)
 		;
 	if (i >= 9)
 		return (1);
+	i = -1;
 	while (str[++i])
 	{
 		if (str[i] < '0' || str[i] > '9')
